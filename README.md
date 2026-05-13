@@ -121,8 +121,8 @@ Vercel will automatically pick up `vercel.json` and run the keep-alive cron ever
 ## 🎨 Adding Real Mockup Templates
 
 1. Prepare base images (PNG with transparent areas for artwork, or solid)
-2. Upload to Supabase Storage `templates/` bucket
-3. Insert into `mockup_templates` table:
+2. Open `/admin/templates` and upload the preview/base images for the template you want to update
+3. The admin route saves the files into the Supabase Storage `templates/` bucket and upserts the `mockup_templates` row
 
 ```sql
 INSERT INTO mockup_templates (slug, name, category, preview_url, base_image_url, width, height, print_area, blend_mode, tags)
