@@ -1,6 +1,5 @@
 'use client';
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
 import { useEditorStore } from '@/lib/store/editorStore';
 import type { Template } from '@/types';
 import { DEFAULT_TEMPLATES } from '@/lib/templates';
@@ -11,6 +10,7 @@ export default function TemplatePanel({ onSelect }: { onSelect?: () => void }) {
   const [templates, setTemplates] = useState<Template[]>(DEFAULT_TEMPLATES);
   const [activeCategory, setActiveCategory] = useState('All');
   const [loading, setLoading] = useState(true);
+  const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
   const { newProject, selectedTemplate } = useEditorStore();
 
   useEffect(() => {
@@ -73,10 +73,18 @@ export default function TemplatePanel({ onSelect }: { onSelect?: () => void }) {
                     : 'border-forge-border hover:border-forge-muted'
                 }`}
               >
-                {/* Placeholder gradient for template preview */}
-                <div className={`absolute inset-0 flex flex-col items-center justify-center gap-1 ${getCategoryColor(t.category)}`}>
-                  <span className="text-3xl">{getCategoryIcon(t.category)}</span>
-                </div>
+                {!brokenImages[t.id] ? (
+                  <img
+                    src={t.previewUrl}
+                    alt={t.name}
+                    className="absolute inset-0 h-full w-full object-cover"
+                    onError={() => setBrokenImages(prev => ({ ...prev, [t.id]: true }))}
+                  />
+                ) : (
+                  <div className={`absolute inset-0 flex flex-col items-center justify-center gap-1 ${getCategoryColor(t.category)}`}>
+                    <span className="text-3xl">{getCategoryIcon(t.category)}</span>
+                  </div>
+                )}
                 {/* Template name overlay */}
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-2">
                   <p className="text-white text-[10px] font-semibold leading-tight">{t.name}</p>
