@@ -24,6 +24,27 @@ type TemplateRow = {
   sort_order: number | null;
 };
 
+type TemplateSource = {
+  id?: string;
+  slug: string;
+  name: string;
+  category: TemplateSeed['category'];
+  previewUrl?: string;
+  preview_url?: string;
+  baseImageUrl?: string;
+  base_image_url?: string;
+  maskUrl?: string | null;
+  mask_url?: string | null;
+  width: number;
+  height: number;
+  printArea?: TemplateSeed['printArea'];
+  print_area?: TemplateSeed['printArea'];
+  blendMode?: string | null;
+  blend_mode?: string | null;
+  tags?: string[] | null;
+  sort_order?: number | null;
+};
+
 function findSeedTemplate(slug: string): TemplateSeed | undefined {
   return DEFAULT_TEMPLATES.find(template => template.slug === slug);
 }
@@ -45,20 +66,25 @@ function serializeTemplateRow(row: TemplateRow) {
   };
 }
 
-function buildTemplateRow(existingTemplate: TemplateRow | null, seedTemplate: TemplateSeed) {
+function buildTemplateRow(existingTemplate: TemplateRow | null, templateSource: TemplateSource) {
+  const printArea = templateSource.printArea || templateSource.print_area;
+  const previewUrl = templateSource.previewUrl || templateSource.preview_url;
+  const baseImageUrl = templateSource.baseImageUrl || templateSource.base_image_url;
+  const blendMode = templateSource.blendMode || templateSource.blend_mode || 'multiply';
+
   return {
-    id: existingTemplate?.id || seedTemplate.id || randomUUID(),
-    slug: seedTemplate.slug,
-    name: seedTemplate.name,
-    category: seedTemplate.category,
-    preview_url: existingTemplate?.preview_url || seedTemplate.previewUrl,
-    base_image_url: existingTemplate?.base_image_url || seedTemplate.baseImageUrl,
-    mask_url: existingTemplate?.mask_url || null,
-    width: seedTemplate.width,
-    height: seedTemplate.height,
-    print_area: seedTemplate.printArea,
-    blend_mode: existingTemplate?.blend_mode || seedTemplate.blendMode || 'multiply',
-    tags: seedTemplate.tags || [],
+    id: existingTemplate?.id || templateSource.id || randomUUID(),
+    slug: templateSource.slug,
+    name: templateSource.name,
+    category: templateSource.category,
+    preview_url: existingTemplate?.preview_url || previewUrl || '',
+    base_image_url: existingTemplate?.base_image_url || baseImageUrl || '',
+    mask_url: existingTemplate?.mask_url || templateSource.maskUrl || templateSource.mask_url || null,
+    width: templateSource.width,
+    height: templateSource.height,
+    print_area: printArea || { x: 0, y: 0, width: templateSource.width, height: templateSource.height, rotation: 0 },
+    blend_mode: existingTemplate?.blend_mode || blendMode,
+    tags: templateSource.tags || [],
     sort_order: existingTemplate?.sort_order ?? 0,
   };
 }
@@ -130,7 +156,7 @@ export async function POST(request: NextRequest) {
     }
 
     const updatedTemplate = {
-      ...buildTemplateRow(existingTemplate as TemplateRow | null, seedTemplate),
+      ...buildTemplateRow(existingTemplate as TemplateRow | null, baseTemplate as TemplateSource),
       preview_url: previewUrl,
       base_image_url: baseImageUrl,
     };
@@ -188,7 +214,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: fetchError.message }, { status: 500 });
     }
 
-    const resetTemplate = buildTemplateRow(existingTemplate as TemplateRow | null, seedTemplate);
+    const resetTemplate = buildTemplateRow(existingTemplate as TemplateRow | null, seedTemplate as TemplateSource);
 
     const { data, error: upsertError } = await supabaseAdmin
       .from('mockup_templates')
