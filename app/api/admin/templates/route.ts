@@ -8,8 +8,59 @@ export const maxDuration = 60;
 
 type TemplateSeed = (typeof DEFAULT_TEMPLATES)[number];
 
+type TemplateRow = {
+  id: string;
+  slug: string;
+  name: string;
+  category: TemplateSeed['category'];
+  preview_url: string;
+  base_image_url: string;
+  mask_url: string | null;
+  width: number;
+  height: number;
+  print_area: TemplateSeed['printArea'];
+  blend_mode: string | null;
+  tags: string[] | null;
+  sort_order: number | null;
+};
+
 function findSeedTemplate(slug: string): TemplateSeed | undefined {
   return DEFAULT_TEMPLATES.find(template => template.slug === slug);
+}
+
+function serializeTemplateRow(row: TemplateRow) {
+  return {
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    category: row.category,
+    previewUrl: row.preview_url,
+    baseImageUrl: row.base_image_url,
+    maskUrl: row.mask_url,
+    width: row.width,
+    height: row.height,
+    printArea: row.print_area,
+    blendMode: row.blend_mode || 'multiply',
+    tags: row.tags || [],
+  };
+}
+
+function buildTemplateRow(existingTemplate: TemplateRow | null, seedTemplate: TemplateSeed) {
+  return {
+    id: existingTemplate?.id || seedTemplate.id || randomUUID(),
+    slug: seedTemplate.slug,
+    name: seedTemplate.name,
+    category: seedTemplate.category,
+    preview_url: existingTemplate?.preview_url || seedTemplate.previewUrl,
+    base_image_url: existingTemplate?.base_image_url || seedTemplate.baseImageUrl,
+    mask_url: existingTemplate?.mask_url || null,
+    width: seedTemplate.width,
+    height: seedTemplate.height,
+    print_area: seedTemplate.printArea,
+    blend_mode: existingTemplate?.blend_mode || seedTemplate.blendMode || 'multiply',
+    tags: seedTemplate.tags || [],
+    sort_order: existingTemplate?.sort_order ?? 0,
+  };
 }
 
 async function uploadTemplateAsset(
@@ -67,8 +118,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 });
     }
 
-    let previewUrl = baseTemplate.preview_url || baseTemplate.previewUrl;
-    let baseImageUrl = baseTemplate.base_image_url || baseTemplate.baseImageUrl;
+    let previewUrl = (baseTemplate as any).preview_url || baseTemplate.previewUrl;
+    let baseImageUrl = (baseTemplate as any).base_image_url || baseTemplate.baseImageUrl;
 
     if (previewFile instanceof File) {
       previewUrl = await uploadTemplateAsset(supabaseAdmin, slug, 'preview', previewFile);
@@ -79,19 +130,9 @@ export async function POST(request: NextRequest) {
     }
 
     const updatedTemplate = {
-      id: existingTemplate?.id || randomUUID(),
-      slug: baseTemplate.slug,
-      name: baseTemplate.name,
-      category: baseTemplate.category,
+      ...buildTemplateRow(existingTemplate as TemplateRow | null, seedTemplate),
       preview_url: previewUrl,
       base_image_url: baseImageUrl,
-      mask_url: baseTemplate.mask_url || baseTemplate.maskUrl || null,
-      width: baseTemplate.width,
-      height: baseTemplate.height,
-      print_area: baseTemplate.print_area || baseTemplate.printArea,
-      blend_mode: baseTemplate.blend_mode || baseTemplate.blendMode || 'multiply',
-      tags: baseTemplate.tags || [],
-      sort_order: baseTemplate.sort_order ?? 0,
     };
 
     const { data, error: upsertError } = await supabaseAdmin
@@ -106,22 +147,61 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      template: {
-        id: data.id,
-        slug: data.slug,
-        name: data.name,
-        category: data.category,
-        previewUrl: data.preview_url,
-        baseImageUrl: data.base_image_url,
-        maskUrl: data.mask_url,
-        width: data.width,
-        height: data.height,
-        printArea: data.print_area,
-        blendMode: data.blend_mode || 'multiply',
-        tags: data.tags || [],
-      },
+      template: serializeTemplateRow(data as TemplateRow),
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Template update failed' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const admin = await verifyAdminCookie(request);
+  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  try {
+    const { slug } = await request.json();
+
+    if (!slug || typeof slug !== 'string') {
+      return NextResponse.json({ error: 'Missing template slug' }, { status: 400 });
+    }
+
+    const seedTemplate = findSeedTemplate(slug);
+
+    if (!seedTemplate) {
+      return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+    }
+
+    const { supabaseAdmin } = await import('@/lib/supabase/server');
+
+    await supabaseAdmin.storage.from('templates').remove([
+      `templates/${slug}/preview.png`,
+      `templates/${slug}/base.png`,
+    ]);
+
+    const { data: existingTemplate, error: fetchError } = await supabaseAdmin
+      .from('mockup_templates')
+      .select('*')
+      .eq('slug', slug)
+      .maybeSingle();
+
+    if (fetchError) {
+      return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    }
+
+    const resetTemplate = buildTemplateRow(existingTemplate as TemplateRow | null, seedTemplate);
+
+    const { data, error: upsertError } = await supabaseAdmin
+      .from('mockup_templates')
+      .upsert(resetTemplate, { onConflict: 'slug' })
+      .select('*')
+      .single();
+
+    if (upsertError) {
+      return NextResponse.json({ error: upsertError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true, template: serializeTemplateRow(data as TemplateRow) });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Template reset failed' }, { status: 500 });
   }
 }

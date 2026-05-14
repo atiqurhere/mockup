@@ -9,6 +9,7 @@ export default function AdminTemplates() {
   const [loading, setLoading] = useState(true);
   const [selectedFiles, setSelectedFiles] = useState<Record<string, { previewImage?: File; baseImage?: File }>>({});
   const [savingSlug, setSavingSlug] = useState('');
+  const [resettingSlug, setResettingSlug] = useState('');
   const [statusBySlug, setStatusBySlug] = useState<Record<string, { type: 'success' | 'error'; message: string }>>({});
 
   useEffect(() => {
@@ -63,6 +64,39 @@ export default function AdminTemplates() {
       }));
     } finally {
       setSavingSlug('');
+    }
+  };
+
+  const handleReset = async (template: Template) => {
+    setResettingSlug(template.slug);
+    setStatusBySlug(prev => ({ ...prev, [template.slug]: { type: 'success', message: 'Resetting to defaults...' } }));
+
+    try {
+      const res = await fetch('/api/admin/templates', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: template.slug }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to reset template');
+      }
+
+      setTemplates(prev => prev.map(item => (item.slug === data.template.slug ? data.template : item)));
+      setSelectedFiles(prev => ({ ...prev, [template.slug]: {} }));
+      setStatusBySlug(prev => ({
+        ...prev,
+        [template.slug]: { type: 'success', message: 'Template reset to defaults.' },
+      }));
+    } catch (err: any) {
+      setStatusBySlug(prev => ({
+        ...prev,
+        [template.slug]: { type: 'error', message: err.message || 'Reset failed' },
+      }));
+    } finally {
+      setResettingSlug('');
     }
   };
 
@@ -160,13 +194,22 @@ export default function AdminTemplates() {
                     <div className="text-[10px] text-forge-subtle">
                       {selectedFiles[t.slug]?.previewImage?.name || selectedFiles[t.slug]?.baseImage?.name ? 'File selected' : 'Choose an image to update'}
                     </div>
-                    <button
-                      onClick={() => handleSave(t)}
-                      disabled={savingSlug === t.slug}
-                      className="rounded-lg bg-forge-accent px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-60"
-                    >
-                      {savingSlug === t.slug ? 'Saving...' : 'Save'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleReset(t)}
+                        disabled={resettingSlug === t.slug}
+                        className="rounded-lg border border-forge-border bg-forge-muted px-3 py-1.5 text-[10px] font-semibold text-forge-text disabled:opacity-60"
+                      >
+                        {resettingSlug === t.slug ? 'Resetting...' : 'Reset'}
+                      </button>
+                      <button
+                        onClick={() => handleSave(t)}
+                        disabled={savingSlug === t.slug}
+                        className="rounded-lg bg-forge-accent px-3 py-1.5 text-[10px] font-semibold text-white disabled:opacity-60"
+                      >
+                        {savingSlug === t.slug ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
                   </div>
                   {statusBySlug[t.slug] && (
                     <p className={`text-[10px] ${statusBySlug[t.slug].type === 'error' ? 'text-red-400' : 'text-emerald-400'}`}>
